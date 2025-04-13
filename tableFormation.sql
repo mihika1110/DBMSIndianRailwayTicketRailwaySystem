@@ -48,6 +48,8 @@ CREATE TABLE PAX_info (
     Class_code VARCHAR(15),
     Seat_no VARCHAR(10),
     Fare DECIMAL(10,2),
+    Booking_status ENUM('Confirmed', 'RAC', 'Waitlist') DEFAULT 'Confirmed',
+    Waitlist_position INT NULL;
     Passenger_id VARCHAR(15) UNIQUE, -- Ensuring Passenger_id is unique for foreign key use
     FOREIGN KEY (PNR_no) REFERENCES Ticket_Reservation(PNR_no) ON DELETE CASCADE
 );
