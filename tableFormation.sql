@@ -43,7 +43,9 @@ CREATE TABLE PAX_info (
     PNR_no VARCHAR(15),
     PAX_Name VARCHAR(100),
     PAX_age INT CHECK (PAX_age > 0),
+    Category VARCHAR(20),
     PAX_sex ENUM('M', 'F', 'Other'),
+    Class_code VARCHAR(15),
     Seat_no VARCHAR(10),
     Fare DECIMAL(10,2),
     Passenger_id VARCHAR(15) UNIQUE, -- Ensuring Passenger_id is unique for foreign key use
@@ -107,6 +109,7 @@ CREATE TABLE Class (
 CREATE TABLE Seat_availability (
     Details_id INT PRIMARY KEY AUTO_INCREMENT,
     Train_code VARCHAR(10),
+    Class_code VARCHAR(10),
     No_of_seats INT,
     FOREIGN KEY (Train_code) REFERENCES Train(Train_code) ON DELETE CASCADE
 );
