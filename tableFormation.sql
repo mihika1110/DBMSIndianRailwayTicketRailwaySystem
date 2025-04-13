@@ -23,7 +23,10 @@ CREATE TABLE Train (
     Distance INT,
     Frequency VARCHAR(20)
 );
- 
+ -- Add Waitlist limit to Train table
+ALTER TABLE Train
+ADD COLUMN Waitlist_limit INT DEFAULT 100;
+
 -- 4. Ticket Reservation 
 CREATE TABLE Ticket_Reservation (
     PNR_no VARCHAR(15) PRIMARY KEY,
@@ -48,7 +51,7 @@ CREATE TABLE PAX_info (
     Class_code VARCHAR(15),
     Seat_no VARCHAR(10),
     Fare DECIMAL(10,2),
-    Booking_status ENUM('Confirmed', 'RAC', 'Waitlist') DEFAULT 'Confirmed',
+    Booking_status ENUM('Confirmed', 'RAC', 'Waitlist', 'Cancelled' ) DEFAULT 'Confirmed',
     Waitlist_position INT NULL;
     Passenger_id VARCHAR(15) UNIQUE, -- Ensuring Passenger_id is unique for foreign key use
     FOREIGN KEY (PNR_no) REFERENCES Ticket_Reservation(PNR_no) ON DELETE CASCADE
@@ -106,7 +109,10 @@ CREATE TABLE Class (
     Class_name VARCHAR(50),
     Seat_per_coach INT
 );
- 
+ -- Add RAC limit to Class table
+ALTER TABLE Class
+ADD COLUMN RAC_limit INT DEFAULT 10;
+
 -- 11. Seat Availability 
 CREATE TABLE Seat_availability (
     Details_id INT PRIMARY KEY AUTO_INCREMENT,
