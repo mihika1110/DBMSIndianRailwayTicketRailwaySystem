@@ -1,0 +1,15 @@
+SELECT 
+    p.PAX_Name,
+    p.Waitlist_position,
+    tr.From_station,
+    tr.To_station,
+    tr.From_date
+FROM 
+    PAX_info p
+JOIN 
+    Ticket_Reservation tr ON p.PNR_no = tr.PNR_no
+WHERE 
+    tr.Train_code = '12302'
+    AND p.Booking_status = 'Waitlist'
+ORDER BY 
+    p.Waitlist_position;

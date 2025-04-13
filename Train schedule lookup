@@ -1,0 +1,16 @@
+SELECT 
+    t.Train_code,
+    t.Train_name,
+    t.Start_time,
+    t.End_time,
+    v.Via_station_name,
+    v.Km_from_origin,
+    v.Reach_time
+FROM 
+    Train t
+LEFT JOIN 
+    Via_details v ON t.Train_code = v.Train_code
+WHERE 
+    t.Train_code = 'TRAIN_CODE'
+ORDER BY 
+    v.Km_from_origin;

@@ -1,0 +1,47 @@
+WITH DailyRevenue AS (
+    SELECT 
+        DATE(pi.Pay_date) AS payment_date,
+        SUM(pi.Amount) AS daily_revenue,
+        COUNT(DISTINCT pi.PNR_no) AS tickets_sold,
+        p.Class_code,
+        t.Train_name
+    FROM 
+        Pay_info pi
+    JOIN 
+        PAX_info p ON pi.PNR_no = p.PNR_no AND pi.SRL_no = p.SRL_no
+    JOIN 
+        Ticket_Reservation tr ON pi.PNR_no = tr.PNR_no
+    JOIN 
+        Train t ON tr.Train_code = t.Train_code
+    WHERE 
+        pi.Pay_date BETWEEN '2023-06-01' AND '2023-12-31'
+    GROUP BY 
+        DATE(pi.Pay_date), p.Class_code, t.Train_name
+)
+
+-- Detailed daily breakdown
+SELECT 
+    payment_date,
+    Class_code,
+    Train_name,
+    daily_revenue,
+    tickets_sold,
+    (SELECT SUM(daily_revenue) FROM DailyRevenue) AS total_revenue_generated
+FROM 
+    DailyRevenue
+UNION ALL
+
+-- Summary row for total
+SELECT 
+    NULL AS payment_date,
+    'TOTAL' AS Class_code,
+    NULL AS Train_name,
+    SUM(daily_revenue) AS daily_revenue,
+    SUM(tickets_sold) AS tickets_sold,
+    SUM(daily_revenue) AS total_revenue_generated
+FROM 
+    DailyRevenue
+ORDER BY 
+    CASE WHEN payment_date IS NULL THEN 2 ELSE 1 END,
+    payment_date,
+    daily_revenue DESC;
