@@ -110,7 +110,8 @@ CREATE TABLE Seat_availability (
     Details_id INT PRIMARY KEY AUTO_INCREMENT,
     Train_code VARCHAR(10),
     Class_code VARCHAR(10),
-    No_of_seats INT,
+    Seat_No INT,
+    Seat_Status ENUM('Available', 'Unavailable'),
     FOREIGN KEY (Train_code) REFERENCES Train(Train_code) ON DELETE CASCADE
 );
  

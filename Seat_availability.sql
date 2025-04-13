@@ -1,20 +1,24 @@
-INSERT INTO Seat_availability (Train_code, Class_code, No_of_seats)
+-- First create a temporary table for seat numbers
+CREATE TEMPORARY TABLE IF NOT EXISTS temp_seat_numbers (
+    seat_num INT PRIMARY KEY
+);
+
+-- Populate with numbers from 1 to 108 (max seats per coach)
+INSERT INTO temp_seat_numbers (seat_num)
+WITH RECURSIVE numbers AS (
+    SELECT 1 AS n
+    UNION ALL
+    SELECT n + 1 FROM numbers WHERE n < 108
+)
+SELECT n FROM numbers;
+
+-- Now insert individual seat records
+INSERT INTO Seat_availability (Train_code, Class_code, Seat_No, Seat_Status)
 SELECT 
     t.Train_code,
     c.Class_code,
-    CASE c.Class_code
-        WHEN '1A' THEN c.Seat_per_coach 
-        WHEN '2A' THEN c.Seat_per_coach 
-        WHEN '3A' THEN c.Seat_per_coach 
-        WHEN 'SL' THEN c.Seat_per_coach 
-        WHEN 'CC' THEN c.Seat_per_coach 
-        WHEN 'EC' THEN c.Seat_per_coach 
-        WHEN '2S' THEN c.Seat_per_coach 
-        WHEN 'GN' THEN c.Seat_per_coach 
-        WHEN 'FC' THEN c.Seat_per_coach 
-        WHEN 'EOG' THEN c.Seat_per_coach 
-        ELSE 0
-    END AS No_of_seats
+    s.seat_num AS Seat_No,
+    'Available' AS Seat_Status
 FROM 
     (SELECT '12301' AS Train_code UNION ALL SELECT '12302' UNION ALL SELECT '12303' UNION ALL
      SELECT '12304' UNION ALL SELECT '12305' UNION ALL SELECT '12306' UNION ALL SELECT '12307' UNION ALL
@@ -42,4 +46,25 @@ FROM
      SELECT '12392' UNION ALL SELECT '12393' UNION ALL SELECT '12394' UNION ALL SELECT '12395' UNION ALL
      SELECT '12396' UNION ALL SELECT '12397' UNION ALL SELECT '12398' UNION ALL SELECT '12399' UNION ALL
      SELECT '12400') t
-CROSS JOIN Class c;
+CROSS JOIN 
+    Class c
+CROSS JOIN 
+    temp_seat_numbers s
+WHERE 
+    s.seat_num <= c.Seat_per_coach;
+
+-- Clean up
+DROP TEMPORARY TABLE IF EXISTS temp_seat_numbers;
+
+-- Verification queries
+SELECT COUNT(*) AS total_seats FROM Seat_availability;
+
+SELECT 
+    Train_code, 
+    Class_code, 
+    COUNT(*) AS total_seats,
+    SUM(CASE WHEN Seat_Status = 'Available' THEN 1 ELSE 0 END) AS available_seats
+FROM Seat_availability
+WHERE Train_code = '12301'
+GROUP BY Train_code, Class_code
+ORDER BY Class_code;
