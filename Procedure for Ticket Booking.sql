@@ -13,7 +13,7 @@ CREATE PROCEDURE BookTicket(
     IN p_payment_mode ENUM('Credit Card', 'Debit Card', 'UPI', 'Net Banking', 'Cash'),
     IN p_inst_type ENUM('Online', 'Counter'),
     OUT p_status_message VARCHAR(100),
-    OUT p_booking_status ENUM('Confirmed', 'RAC', 'Waitlist'),
+    OUT p_booking_status ENUM('Confirmed', 'RAC', 'Waitlist', 'Cancelled'),
     OUT p_waitlist_position INT
 )
 BEGIN
@@ -30,12 +30,21 @@ BEGIN
     DECLARE v_available_seats INT;
     DECLARE v_rac_seats INT;
     DECLARE v_current_waitlist INT;
-    DECLARE v_booking_status ENUM('Confirmed', 'RAC', 'Waitlist') DEFAULT 'Confirmed';
+    DECLARE v_booking_status ENUM('Confirmed', 'RAC', 'Waitlist','Cancelled') DEFAULT 'Confirmed';
     DECLARE v_waitlist_position INT DEFAULT 0;
+    DECLARE v_km_rate DECIMAL(10,2);
+    DECLARE v_distance INT;
     
     -- Configuration parameters
     DECLARE v_rac_limit INT DEFAULT 10; -- Number of RAC seats per train/class
     DECLARE v_waitlist_limit INT DEFAULT 100; -- Maximum waitlist positions
+    
+    -- Validate from and to stations
+    IF p_from_station = p_to_station THEN
+        SET p_status_message = 'From and To stations cannot be the same';
+        SET p_booking_status = 'Cancelled';
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'From and To stations cannot be identical';
+    END IF;
     
     -- Generate PNR number (format: PNR + random 8 digits)
     SET v_pnr_no = CONCAT('PNR', LPAD(FLOOR(RAND() * 100000000), 8, '0'));
@@ -50,6 +59,67 @@ BEGIN
     AND vd2.Via_station_code = p_to_station
     AND vd2.Km_from_origin > vd1.Km_from_origin
     LIMIT 1;
+    
+    -- Calculate distance
+    SET v_distance = v_to_km - v_from_km;
+    
+    -- IMPROVED FARE CALCULATION
+    -- Try exact match first
+    SELECT Fare INTO v_fare
+    FROM Train_fare
+    WHERE Train_code = p_train_code
+    AND Class_id = (SELECT Class_id FROM Class WHERE Class_code = p_class_code)
+    AND From_Km <= v_from_km
+    AND To_Km >= v_to_km
+    ORDER BY (To_Km - From_Km) ASC  -- Prefer more specific ranges
+    LIMIT 1;
+    
+    -- If no exact match, find closest fare
+    IF v_fare IS NULL THEN
+        SELECT Fare INTO v_fare
+        FROM Train_fare
+        WHERE Train_code = p_train_code
+        AND Class_id = (SELECT Class_id FROM Class WHERE Class_code = p_class_code)
+        ORDER BY ABS(From_Km - v_from_km) + ABS(To_Km - v_to_km) ASC
+        LIMIT 1;
+    END IF;
+    
+    -- If still no fare, calculate from km rate
+    IF v_fare IS NULL THEN
+        SELECT Km_rate INTO v_km_rate
+        FROM Class 
+        WHERE Class_code = p_class_code;
+        
+        IF v_km_rate IS NOT NULL AND v_distance > 0 THEN
+            SET v_fare = v_distance * v_km_rate;
+            SET p_status_message = CONCAT(IFNULL(p_status_message, ''), 
+                                       ' Used calculated fare based on distance.');
+        END IF;
+    END IF;
+    
+    -- Final fallback if no fare could be determined
+    IF v_fare IS NULL THEN
+        SET v_fare = 1000.00; -- Default fare
+        SET p_status_message = CONCAT(IFNULL(p_status_message, ''), 
+                                   ' No fare found. Used default fare.');
+    END IF;
+    
+    -- Validate fare
+    IF v_fare <= 0 THEN
+        SET v_fare = 1000.00;
+        SET p_status_message = CONCAT(IFNULL(p_status_message, ''), 
+                                   ' Invalid fare. Used default.');
+    END IF;
+    
+    -- Apply concessions
+    SET v_fare = v_fare * 
+        CASE p_passenger_category
+            WHEN 'student' THEN 0.75
+            WHEN 'senior' THEN 0.60
+            WHEN 'disabled' THEN 0.50
+            WHEN 'child' THEN 0.50
+            ELSE 1.00
+        END;
     
     -- Create ticket reservation
     INSERT INTO Ticket_Reservation (
@@ -69,17 +139,19 @@ BEGIN
     
     -- Check current RAC count
     SELECT COUNT(*) INTO v_rac_seats
-    FROM PAX_info
-    WHERE Train_code = p_train_code
-    AND Class_code = p_class_code
-    AND Booking_status = 'RAC';
-    
+    FROM PAX_info p
+    JOIN Ticket_Reservation t ON p.PNR_no = t.PNR_no
+    WHERE t.Train_code = p_train_code
+    AND p.Class_code = p_class_code
+    AND p.Booking_status = 'RAC';
+
     -- Check current waitlist count
     SELECT COUNT(*) INTO v_current_waitlist
-    FROM PAX_info
-    WHERE Train_code = p_train_code
-    AND Class_code = p_class_code
-    AND Booking_status = 'Waitlist';
+    FROM PAX_info p
+    JOIN Ticket_Reservation t ON p.PNR_no = t.PNR_no
+    WHERE t.Train_code = p_train_code
+    AND p.Class_code = p_class_code
+    AND p.Booking_status = 'Waitlist';
     
     -- Determine booking status
     IF v_available_seats > 0 THEN
@@ -93,7 +165,7 @@ BEGIN
         
         SET v_booking_status = 'Confirmed';
     ELSEIF v_rac_seats < v_rac_limit THEN
-        -- Assign RAC status (shared berth)
+        -- Assign RAC status
         SET v_seat_no = NULL;
         SET v_booking_status = 'RAC';
     ELSEIF v_current_waitlist < v_waitlist_limit THEN
@@ -122,25 +194,6 @@ BEGIN
             WHEN '2S' THEN 'F'
             WHEN 'FC' THEN 'G'
             ELSE 'H'
-        END;
-    
-    -- Calculate fare (full fare even for RAC/Waitlist)
-    SELECT Fare INTO v_fare
-    FROM Train_fare
-    WHERE Train_code = p_train_code
-    AND Class_id = (SELECT Class_id FROM Class WHERE Class_code = p_class_code)
-    AND From_Km <= v_from_km
-    AND To_Km >= v_to_km
-    LIMIT 1;
-    
-    -- Apply concessions
-    SET v_fare = v_fare * 
-        CASE p_passenger_category
-            WHEN 'student' THEN 0.75
-            WHEN 'senior' THEN 0.60
-            WHEN 'disabled' THEN 0.50
-            WHEN 'child' THEN 0.50
-            ELSE 1.00
         END;
     
     -- Generate passenger ID
@@ -177,9 +230,6 @@ BEGIN
         AND Seat_No = v_seat_no;
     END IF;
     
-    -- Set total fare
-    SET v_total_fare = v_fare;
-    
     -- Process payment
     INSERT INTO Pay_info (
         PNR_no, SRL_no, Pay_date, Pay_mode, 
@@ -189,7 +239,7 @@ BEGIN
         v_srl_no,
         CURDATE(),
         p_payment_mode,
-        v_total_fare,
+        v_fare,
         p_inst_type,
         CASE WHEN p_inst_type = 'Counter' THEN ROUND(10 + RAND() * 20, 2) ELSE 0 END
     );
@@ -197,15 +247,15 @@ BEGIN
     -- Set payment ID
     SET v_payment_id = LAST_INSERT_ID();
     
-    -- Create refund rule with different percentages based on status
+    -- Create refund rule
     INSERT INTO Refund_rule (
         PNR_no, Refundable_amt, From_time, To_time
     ) VALUES (
         v_pnr_no,
         CASE 
-            WHEN v_booking_status = 'Confirmed' THEN v_total_fare * 0.8
-            WHEN v_booking_status = 'RAC' THEN v_total_fare * 0.9
-            ELSE v_total_fare -- Full refund for waitlisted tickets if not confirmed
+            WHEN v_booking_status = 'Confirmed' THEN v_fare * 0.8
+            WHEN v_booking_status = 'RAC' THEN v_fare * 0.9
+            ELSE v_fare -- Full refund for waitlisted tickets
         END,
         '00:00:00',
         (SELECT SUBTIME(Start_time, '48:00:00') FROM Train WHERE Train_code = p_train_code)
@@ -227,7 +277,7 @@ BEGIN
         p_from_station AS From_Station,
         p_to_station AS To_Station,
         p_from_date AS Journey_Date,
-        v_total_fare AS Total_Fare,
+        v_fare AS Total_Fare,
         1 AS Passenger_Count,
         v_payment_id AS Payment_ID,
         v_passenger_id AS Passenger_ID,
@@ -238,10 +288,3 @@ BEGIN
 END //
 
 DELIMITER ;
-
-ALTER TABLE Class
-ADD COLUMN RAC_limit INT DEFAULT 10;
-
--- Add Waitlist limit to Train table
-ALTER TABLE Train
-ADD COLUMN Waitlist_limit INT DEFAULT 100;

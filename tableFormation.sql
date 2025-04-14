@@ -52,7 +52,7 @@ CREATE TABLE PAX_info (
     Seat_no VARCHAR(10),
     Fare DECIMAL(10,2),
     Booking_status ENUM('Confirmed', 'RAC', 'Waitlist', 'Cancelled' ) DEFAULT 'Confirmed',
-    Waitlist_position INT NULL;
+    Waitlist_position INT NULL,
     Passenger_id VARCHAR(15) UNIQUE, -- Ensuring Passenger_id is unique for foreign key use
     FOREIGN KEY (PNR_no) REFERENCES Ticket_Reservation(PNR_no) ON DELETE CASCADE
 );
@@ -75,10 +75,12 @@ CREATE TABLE Pay_info (
 CREATE TABLE Refund_rule (
     Rule_id INT PRIMARY KEY AUTO_INCREMENT,
     PNR_no VARCHAR(15),
+    Passenger_id VARCHAR(15),
     Refundable_amt DECIMAL(10,2),
     From_time TIME,
     To_time TIME,
-    FOREIGN KEY (PNR_no) REFERENCES Ticket_Reservation(PNR_no) ON DELETE CASCADE
+    FOREIGN KEY (PNR_no) REFERENCES Ticket_Reservation(PNR_no) ON DELETE CASCADE,
+    FOREIGN KEY (Passenger_id) REFERENCES PAX_info(Passenger_id) ON DELETE CASCADE
 );
  
 -- 8. Login Credentials 
@@ -119,7 +121,7 @@ CREATE TABLE Seat_availability (
     Train_code VARCHAR(10),
     Class_code VARCHAR(10),
     Seat_No INT,
-    Seat_Status ENUM('Available', 'Unavailable'),
+    Seat_Status ENUM('Available', 'Unavailable', 'Booked' , 'RAC'),
     FOREIGN KEY (Train_code) REFERENCES Train(Train_code) ON DELETE CASCADE
 );
  
