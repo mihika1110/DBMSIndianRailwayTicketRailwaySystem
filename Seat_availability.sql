@@ -1,70 +1,48 @@
--- First create a temporary table for seat numbers
-CREATE TEMPORARY TABLE IF NOT EXISTS temp_seat_numbers (
-    seat_num INT PRIMARY KEY
-);
+DELIMITER //
 
--- Populate with numbers from 1 to 108 (max seats per coach)
-INSERT INTO temp_seat_numbers (seat_num)
-WITH RECURSIVE numbers AS (
-    SELECT 1 AS n
-    UNION ALL
-    SELECT n + 1 FROM numbers WHERE n < 108
-)
-SELECT n FROM numbers;
+CREATE TRIGGER insert_seat_availability_from_pax
+BEFORE INSERT ON PAX_info
+FOR EACH ROW
+BEGIN
+    DECLARE seat_count INT DEFAULT 72;
+    DECLARE i INT DEFAULT 1;
+    DECLARE existing_seats INT;
+    DECLARE journey_date DATE;
 
--- Now insert individual seat records
-INSERT INTO Seat_availability (Train_code, Class_code, Seat_No, Seat_Status)
-SELECT 
-    t.Train_code,
-    c.Class_code,
-    s.seat_num AS Seat_No,
-    'Available' AS Seat_Status
-FROM 
-    (SELECT '12301' AS Train_code UNION ALL SELECT '12302' UNION ALL SELECT '12303' UNION ALL
-     SELECT '12304' UNION ALL SELECT '12305' UNION ALL SELECT '12306' UNION ALL SELECT '12307' UNION ALL
-     SELECT '12308' UNION ALL SELECT '12309' UNION ALL SELECT '12310' UNION ALL SELECT '12311' UNION ALL
-     SELECT '12312' UNION ALL SELECT '12313' UNION ALL SELECT '12314' UNION ALL SELECT '12315' UNION ALL
-     SELECT '12316' UNION ALL SELECT '12317' UNION ALL SELECT '12318' UNION ALL SELECT '12319' UNION ALL
-     SELECT '12320' UNION ALL SELECT '12321' UNION ALL SELECT '12322' UNION ALL SELECT '12323' UNION ALL
-     SELECT '12324' UNION ALL SELECT '12325' UNION ALL SELECT '12326' UNION ALL SELECT '12327' UNION ALL
-     SELECT '12328' UNION ALL SELECT '12329' UNION ALL SELECT '12330' UNION ALL SELECT '12331' UNION ALL
-     SELECT '12332' UNION ALL SELECT '12333' UNION ALL SELECT '12334' UNION ALL SELECT '12335' UNION ALL
-     SELECT '12336' UNION ALL SELECT '12337' UNION ALL SELECT '12338' UNION ALL SELECT '12339' UNION ALL
-     SELECT '12340' UNION ALL SELECT '12341' UNION ALL SELECT '12342' UNION ALL SELECT '12343' UNION ALL
-     SELECT '12344' UNION ALL SELECT '12345' UNION ALL SELECT '12346' UNION ALL SELECT '12347' UNION ALL
-     SELECT '12348' UNION ALL SELECT '12349' UNION ALL SELECT '12350' UNION ALL SELECT '12351' UNION ALL
-     SELECT '12352' UNION ALL SELECT '12353' UNION ALL SELECT '12354' UNION ALL SELECT '12355' UNION ALL
-     SELECT '12356' UNION ALL SELECT '12357' UNION ALL SELECT '12358' UNION ALL SELECT '12359' UNION ALL
-     SELECT '12360' UNION ALL SELECT '12361' UNION ALL SELECT '12362' UNION ALL SELECT '12363' UNION ALL
-     SELECT '12364' UNION ALL SELECT '12365' UNION ALL SELECT '12366' UNION ALL SELECT '12367' UNION ALL
-     SELECT '12368' UNION ALL SELECT '12369' UNION ALL SELECT '12370' UNION ALL SELECT '12371' UNION ALL
-     SELECT '12372' UNION ALL SELECT '12373' UNION ALL SELECT '12374' UNION ALL SELECT '12375' UNION ALL
-     SELECT '12376' UNION ALL SELECT '12377' UNION ALL SELECT '12378' UNION ALL SELECT '12379' UNION ALL
-     SELECT '12380' UNION ALL SELECT '12381' UNION ALL SELECT '12382' UNION ALL SELECT '12383' UNION ALL
-     SELECT '12384' UNION ALL SELECT '12385' UNION ALL SELECT '12386' UNION ALL SELECT '12387' UNION ALL
-     SELECT '12388' UNION ALL SELECT '12389' UNION ALL SELECT '12390' UNION ALL SELECT '12391' UNION ALL
-     SELECT '12392' UNION ALL SELECT '12393' UNION ALL SELECT '12394' UNION ALL SELECT '12395' UNION ALL
-     SELECT '12396' UNION ALL SELECT '12397' UNION ALL SELECT '12398' UNION ALL SELECT '12399' UNION ALL
-     SELECT '12400') t
-CROSS JOIN 
-    Class c
-CROSS JOIN 
-    temp_seat_numbers s
-WHERE 
-    s.seat_num <= c.Seat_per_coach;
+    -- Get journey date from Ticket_Reservation
+    SELECT From_date INTO journey_date
+    FROM Ticket_Reservation
+    WHERE PNR_no = NEW.PNR_no;
 
--- Clean up
-DROP TEMPORARY TABLE IF EXISTS temp_seat_numbers;
+    -- Check if availability already exists
+    SELECT COUNT(*) INTO existing_seats
+    FROM Seat_availability
+    WHERE Train_code = (SELECT Train_code FROM Ticket_Reservation WHERE PNR_no = NEW.PNR_no)
+      AND Class_code = NEW.Class_code
+      AND travel_date = journey_date;
 
--- Verification queries
-SELECT COUNT(*) AS total_seats FROM Seat_availability;
+    -- Insert seat records if not present
+    IF existing_seats = 0 THEN
+        WHILE i <= seat_count DO
+            INSERT INTO Seat_availability (
+                Train_code, Class_code, Seat_No, travel_date, Seat_Status
+            ) VALUES (
+                (SELECT Train_code FROM Ticket_Reservation WHERE PNR_no = NEW.PNR_no),
+                NEW.Class_code,
+                i,
+                journey_date,
+                'Available'
+            );
+            SET i = i + 1;
+        END WHILE;
+    END IF;
+    UPDATE Seat_availability SET Seat_Status='Booked' WHERE Train_Code=(SELECT Train_code FROM Ticket_Reservation WHERE PNR_no = NEW.PNR_no) 
+                                                            AND Class_code=NEW.Class_code
+                                                            AND Seat_No=1
+                                                            AND travel_date=journey_date;
+END;
+//
 
-SELECT 
-    Train_code, 
-    Class_code, 
-    COUNT(*) AS total_seats,
-    SUM(CASE WHEN Seat_Status = 'Available' THEN 1 ELSE 0 END) AS available_seats
-FROM Seat_availability
-WHERE Train_code = '12301'
-GROUP BY Train_code, Class_code
-ORDER BY Class_code;
+DELIMITER ;
+
+

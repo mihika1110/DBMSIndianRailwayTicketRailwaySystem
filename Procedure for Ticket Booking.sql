@@ -84,18 +84,6 @@ BEGIN
         LIMIT 1;
     END IF;
     
-    -- If still no fare, calculate from km rate
-    IF v_fare IS NULL THEN
-        SELECT Km_rate INTO v_km_rate
-        FROM Class 
-        WHERE Class_code = p_class_code;
-        
-        IF v_km_rate IS NOT NULL AND v_distance > 0 THEN
-            SET v_fare = v_distance * v_km_rate;
-            SET p_status_message = CONCAT(IFNULL(p_status_message, ''), 
-                                       ' Used calculated fare based on distance.');
-        END IF;
-    END IF;
     
     -- Final fallback if no fare could be determined
     IF v_fare IS NULL THEN
@@ -135,7 +123,8 @@ BEGIN
     FROM Seat_availability
     WHERE Train_code = p_train_code
     AND Class_code = p_class_code
-    AND Seat_Status = 'Available';
+    AND Seat_Status = 'Available'
+    AND travel_date=p_from_date;
     
     -- Check current RAC count
     SELECT COUNT(*) INTO v_rac_seats
@@ -161,6 +150,7 @@ BEGIN
         WHERE Train_code = p_train_code
         AND Class_code = p_class_code
         AND Seat_Status = 'Available'
+        AND travel_date=p_from_date
         LIMIT 1;
         
         SET v_booking_status = 'Confirmed';
@@ -227,7 +217,8 @@ BEGIN
         SET Seat_Status = 'Booked'
         WHERE Train_code = p_train_code
         AND Class_code = p_class_code
-        AND Seat_No = v_seat_no;
+        AND Seat_No = v_seat_no
+        AND travel_date=p_from_date;
     END IF;
     
     -- Process payment
@@ -246,20 +237,6 @@ BEGIN
     
     -- Set payment ID
     SET v_payment_id = LAST_INSERT_ID();
-    
-    -- Create refund rule
-    INSERT INTO Refund_rule (
-        PNR_no, Refundable_amt, From_time, To_time
-    ) VALUES (
-        v_pnr_no,
-        CASE 
-            WHEN v_booking_status = 'Confirmed' THEN v_fare * 0.8
-            WHEN v_booking_status = 'RAC' THEN v_fare * 0.9
-            ELSE v_fare -- Full refund for waitlisted tickets
-        END,
-        '00:00:00',
-        (SELECT SUBTIME(Start_time, '48:00:00') FROM Train WHERE Train_code = p_train_code)
-    );
     
     -- Set output parameters
     SET p_status_message = CONCAT('Booking ', v_booking_status, 
