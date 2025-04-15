@@ -75,12 +75,9 @@ CREATE TABLE Pay_info (
 CREATE TABLE Refund_rule (
     Rule_id INT PRIMARY KEY AUTO_INCREMENT,
     PNR_no VARCHAR(15),
-    Passenger_id VARCHAR(15),
     Refundable_amt DECIMAL(10,2),
-    From_time TIME,
-    To_time TIME,
-    FOREIGN KEY (PNR_no) REFERENCES Ticket_Reservation(PNR_no) ON DELETE CASCADE,
-    FOREIGN KEY (Passenger_id) REFERENCES PAX_info(Passenger_id) ON DELETE CASCADE
+    Cancellation_time DATETIME,
+    FOREIGN KEY (PNR_no) REFERENCES Ticket_Reservation(PNR_no) ON DELETE CASCADE
 );
  
 -- 8. Login Credentials 
@@ -121,6 +118,7 @@ CREATE TABLE Seat_availability (
     Train_code VARCHAR(10),
     Class_code VARCHAR(10),
     Seat_No INT,
+    travel_date DATE NOT NULL,
     Seat_Status ENUM('Available', 'Unavailable', 'Booked' , 'RAC'),
     FOREIGN KEY (Train_code) REFERENCES Train(Train_code) ON DELETE CASCADE
 );
@@ -134,4 +132,13 @@ CREATE TABLE Via_details (
     Km_from_origin INT,
     Reach_time TIME,
     FOREIGN KEY (Train_code) REFERENCES Train(Train_code) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS Cancellation_Records (
+    Cancellation_id INT PRIMARY KEY AUTO_INCREMENT,
+    PNR_no VARCHAR(15),
+    Cancellation_time DATETIME,
+    Original_fare DECIMAL(10,2),
+    Refund_amount DECIMAL(10,2),
+    FOREIGN KEY (PNR_no) REFERENCES Ticket_Reservation(PNR_no)
 );

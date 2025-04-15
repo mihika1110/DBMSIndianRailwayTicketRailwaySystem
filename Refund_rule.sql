@@ -1,7 +1,6 @@
-INSERT INTO Refund_rule (PNR_no, Passenger_id, Refundable_amt, From_time, To_time)
+INSERT INTO Refund_rule (PNR_no, Refundable_amt, Cancellation_time)
 SELECT 
     tr.PNR_no,
-    p.Passenger_id,
     CASE 
         WHEN SUM(pi.Amount) >= 9000 THEN SUM(pi.Amount) * 0.80
         WHEN SUM(pi.Amount) >= 8000 THEN SUM(pi.Amount) * 0.75
@@ -14,10 +13,9 @@ SELECT
         WHEN SUM(pi.Amount) >= 1000 THEN SUM(pi.Amount) * 0.40
         ELSE SUM(pi.Amount) * 0.35
     END AS Refundable_amt,
-    '08:00:00' AS From_time,
-    '20:00:00' AS To_time
+    DATE_SUB(CONCAT(tr.From_date, ' ', t.Start_time), INTERVAL 1 DAY) AS Cancellation_time
 FROM Pay_info pi
 JOIN Ticket_Reservation tr ON pi.PNR_no = tr.PNR_no
-JOIN PAX_info p ON tr.PNR_no = p.PNR_no
-GROUP BY tr.PNR_no, p.Passenger_id
+JOIN Train t ON tr.Train_code = t.Train_code
+GROUP BY tr.PNR_no, tr.From_date, t.Start_time
 HAVING SUM(pi.Amount) > 0;
