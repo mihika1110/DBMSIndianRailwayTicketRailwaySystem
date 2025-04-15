@@ -1,4 +1,3 @@
-
 drop PROCEDURE ProcessUpgrades;
 DROP PROCEDURE IF EXISTS ProcessCancellation;
 
@@ -31,19 +30,21 @@ BEGIN
         tr.From_date,
         c.RAC_limit,
         COUNT(p.Passenger_id),
-        SUM(p.Fare)
+        SUM(p.Fare),
+        t.Start_time
     INTO 
         v_train_code,
         v_departure_date,
         v_rac_limit,
         v_passenger_count,
-        v_original_fare
+        v_original_fare,
+        @start_time
     FROM Ticket_Reservation tr
     JOIN Train t ON tr.Train_code = t.Train_code
     JOIN PAX_info p ON tr.PNR_no = p.PNR_no
     JOIN Class c ON p.Class_code = c.Class_code
     WHERE tr.PNR_no = p_pnr_no
-    GROUP BY tr.Train_code, tr.From_date, c.RAC_limit;
+    GROUP BY tr.Train_code, tr.From_date, c.RAC_limit, t.Start_time;
     
     -- Check if PNR exists
     IF v_train_code IS NULL THEN
@@ -53,18 +54,13 @@ BEGIN
         SET MESSAGE_TEXT = 'Invalid PNR';
     END IF;
     
-    -- Get refund amount from Refund_rule table
-    SELECT Refundable_amt INTO p_refund_amount
-    FROM Refund_rule
-    WHERE PNR_no = p_pnr_no
-    AND p_cancellation_time <= Cancellation_time
-    ORDER BY Cancellation_time DESC
-    LIMIT 1;
-    
-    -- If no matching refund rule found, no refund
-    IF p_refund_amount IS NULL THEN
-        SET p_refund_amount = 0;
-    END IF;
+    -- Get refund amount based on cancellation time relative to journey
+    SET p_refund_amount = CASE
+        WHEN TIMESTAMPDIFF(HOUR, p_cancellation_time, CONCAT(v_departure_date, ' ', @start_time)) >= 48 THEN v_original_fare * 0.80
+        WHEN TIMESTAMPDIFF(HOUR, p_cancellation_time, CONCAT(v_departure_date, ' ', @start_time)) >= 24 THEN v_original_fare * 0.50
+        WHEN TIMESTAMPDIFF(HOUR, p_cancellation_time, CONCAT(v_departure_date, ' ', @start_time)) >= 12 THEN v_original_fare * 0.25
+        ELSE 0
+    END;
     
     -- Mark all tickets as cancelled and free seats
     UPDATE PAX_info p
@@ -80,13 +76,14 @@ BEGIN
     
     -- Free up confirmed seats
     UPDATE Seat_availability sa
-    JOIN PAX_info p ON sa.Seat_No = REGEXP_REPLACE(p.Seat_no, '^[^0-9]*', '')
+    JOIN PAX_info p ON sa.Seat_No = SUBSTRING(p.Seat_no, 2)
     SET sa.Seat_Status = 'Available'
     WHERE sa.Train_code = v_train_code
     AND sa.Class_code IN (SELECT Class_code FROM PAX_info WHERE PNR_no = p_pnr_no)
     AND p.PNR_no = p_pnr_no
     AND p.Booking_status = 'Cancelled'
-    AND p.Seat_no IS NOT NULL;
+    AND p.Seat_no IS NOT NULL
+    AND sa.travel_date = v_departure_date;
     
     -- Record cancellation (one record per PNR)
     INSERT INTO Cancellation_Records (
