@@ -1,0 +1,14 @@
+SELECT 
+    pi.PAX_Name,
+    pi.Class_code,
+    pi.Seat_no,
+    pi.Fare * 0.85 AS Base_Fare,
+    pi.Fare * 0.1 AS Service_Charge,   -- Assuming a 10% service charge
+    pi.Fare * 0.05 AS Convenience_Fee, -- Assuming a 5% convenience fee
+    pay.Amount AS Payment_Made,
+    cr.Refund_amount AS Refund_Amount,  
+    (pi.Fare + (pi.Fare * 0.1) + (pi.Fare * 0.05) - COALESCE(cr.Refund_amount, 0)) AS Total_Amount
+FROM PAX_info pi
+LEFT JOIN Pay_info pay ON pi.PNR_no = pay.PNR_no
+LEFT JOIN Cancellation_Records cr ON pi.PNR_no = cr.PNR_no
+WHERE pi.PNR_no = 'PNR62363373';

@@ -1,32 +1,12 @@
 SELECT 
-    tr.PNR_no,
-    tr.Train_code,
-    t.Train_name,
-    p.PAX_Name,
-    p.Class_code,
-    p.Fare AS original_fare,
-    r.Refundable_amt,
-    (p.Fare - r.Refundable_amt) AS cancellation_charges,
+    cr.PNR_no,
+    cr.Cancellation_time,
+    cr.Original_fare,
+    cr.Refund_amount,
     CASE 
-        WHEN r.Refundable_amt IS NULL THEN 'No refund processed'
-        WHEN r.Refundable_amt = p.Fare THEN 'Full refund'
-        WHEN r.Refundable_amt = 0 THEN 'No refund'
-        ELSE 'Partial refund'
-    END AS refund_status,
-    tr.From_date AS journey_date,
-    pi.Pay_date AS payment_date
-FROM 
-    PAX_info p
-JOIN 
-    Ticket_Reservation tr ON p.PNR_no = tr.PNR_no
-LEFT JOIN 
-    Refund_rule r ON tr.PNR_no = r.PNR_no
-LEFT JOIN
-    Train t ON tr.Train_code = t.Train_code
-LEFT JOIN
-    Pay_info pi ON tr.PNR_no = pi.PNR_no AND p.SRL_no = pi.SRL_no
-WHERE 
-    p.Booking_status = 'Cancelled'
-ORDER BY
-    tr.From_date DESC,
-    p.PAX_Name;
+        WHEN cr.Refund_amount = 0 THEN 'No Refund'
+        WHEN cr.Refund_amount = cr.Original_fare THEN 'Full Refund'
+        ELSE 'Partial Refund'
+    END AS Refund_Status
+FROM Cancellation_Records cr
+ORDER BY cr.Cancellation_time DESC;

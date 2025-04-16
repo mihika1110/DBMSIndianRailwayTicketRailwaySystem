@@ -1,17 +1,18 @@
-SELECT 
-    p.PAX_Name,
-    p.Class_code,
-    p.Seat_no,
-    p.Booking_status,
-    tr.From_station,
-    tr.To_station
-FROM 
-    PAX_info p
-JOIN 
-    Ticket_Reservation tr ON p.PNR_no = tr.PNR_no
-WHERE 
-    tr.Train_code = '12302'
-    AND tr.From_date = '2023-06-03'
-    AND p.Booking_status IN ('Confirmed', 'RAC')
-ORDER BY 
-    p.Class_code, p.Seat_no;
+SELECT
+    tr.PNR_no,
+    pi.Passenger_id,
+    pi.PAX_Name,
+    pi.PAX_age,
+    pi.PAX_sex,
+    pi.Category,
+    pi.Class_code,
+    pi.Seat_no,
+    pi.Booking_status,
+    pi.Waitlist_position
+FROM Ticket_Reservation tr
+JOIN PAX_info pi ON tr.PNR_no = pi.PNR_no
+WHERE
+    tr.Train_code = '12321'
+    AND tr.From_date = '2023-10-01'
+    AND pi.Booking_status='Confirmed'
+ORDER BY pi.Class_code, pi.Seat_no;

@@ -1,9 +1,22 @@
-SELECT 
-    SUM(r.Refundable_amt) AS total_refund_amount
-FROM 
-    Refund_rule r
-JOIN 
-    Ticket_Reservation tr ON r.PNR_no = tr.PNR_no
-WHERE 
-    tr.Train_code = '12301'
-    AND tr.From_date = '2023-06-15';
+-- Step 1: PNR-wise refund breakdown
+SELECT
+    cr.PNR_no,
+    pi.PAX_Name,
+    cr.Original_fare,
+    cr.Refund_amount
+FROM Cancellation_Records cr
+JOIN Ticket_Reservation tr ON cr.PNR_no = tr.PNR_no
+JOIN PAX_info pi ON cr.PNR_no = pi.PNR_no
+WHERE tr.Train_code = '12320'
+AND tr.From_date='2023-10-01'
+ORDER BY cr.PNR_no;
+
+-- Step 2: Total refund for the train
+SELECT
+    tr.Train_code,
+    SUM(cr.Refund_amount) AS Total_Refund_Amount
+FROM Cancellation_Records cr
+JOIN Ticket_Reservation tr ON cr.PNR_no = tr.PNR_no
+WHERE tr.Train_code = '12320'
+AND tr.From_date='2023-10-01'
+GROUP BY tr.Train_code;
