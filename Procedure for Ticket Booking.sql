@@ -27,17 +27,24 @@ BEGIN
     DECLARE v_payment_id INT;
     DECLARE v_srl_no INT;
     DECLARE v_seat_prefix CHAR(1);
-    DECLARE v_available_seats INT;
-    DECLARE v_rac_seats INT;
-    DECLARE v_current_waitlist INT;
+    DECLARE v_available_seats INT DEFAULT 0;
+    DECLARE v_rac_seats INT DEFAULT 0;
+    DECLARE v_current_waitlist INT DEFAULT 0;
     DECLARE v_booking_status ENUM('Confirmed', 'RAC', 'Waitlist','Cancelled') DEFAULT 'Confirmed';
     DECLARE v_waitlist_position INT DEFAULT 0;
     DECLARE v_km_rate DECIMAL(10,2);
     DECLARE v_distance INT;
+    DECLARE v_seat_exists INT DEFAULT 0;
+    DECLARE v_seats_per_coach INT;
     
     -- Configuration parameters
     DECLARE v_rac_limit INT DEFAULT 10; -- Number of RAC seats per train/class
     DECLARE v_waitlist_limit INT DEFAULT 100; -- Maximum waitlist positions
+    
+    -- Get number of seats per coach from Class table
+    SELECT Seat_per_coach INTO v_seats_per_coach
+    FROM Class
+    WHERE Class_code = p_class_code;
     
     -- Validate from and to stations
     IF p_from_station = p_to_station THEN
@@ -49,7 +56,7 @@ BEGIN
     -- Generate PNR number (format: PNR + random 8 digits)
     SET v_pnr_no = CONCAT('PNR', LPAD(FLOOR(RAND() * 100000000), 8, '0'));
     
-    -- Get distance information
+    -- Get distance information with proper validation
     SELECT vd1.Km_from_origin, vd2.Km_from_origin 
     INTO v_from_km, v_to_km
     FROM Via_details vd1
@@ -60,8 +67,22 @@ BEGIN
     AND vd2.Km_from_origin > vd1.Km_from_origin
     LIMIT 1;
     
+    -- Validate distance information
+    IF v_from_km IS NULL OR v_to_km IS NULL THEN
+        SET p_status_message = 'Invalid station codes or route information';
+        SET p_booking_status = 'Cancelled';
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Could not determine route distance';
+    END IF;
+    
     -- Calculate distance
     SET v_distance = v_to_km - v_from_km;
+    
+    -- Validate calculated distance
+    IF v_distance <= 0 THEN
+        SET p_status_message = 'Invalid route distance calculated';
+        SET p_booking_status = 'Cancelled';
+        SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Invalid route distance';
+    END IF;
     
     -- IMPROVED FARE CALCULATION
     -- Try exact match first
@@ -83,7 +104,6 @@ BEGIN
         ORDER BY ABS(From_Km - v_from_km) + ABS(To_Km - v_to_km) ASC
         LIMIT 1;
     END IF;
-    
     
     -- Final fallback if no fare could be determined
     IF v_fare IS NULL THEN
@@ -109,7 +129,7 @@ BEGIN
             ELSE 1.00
         END;
     
-    -- Create ticket reservation
+    -- Create ticket reservation with validated distance values
     INSERT INTO Ticket_Reservation (
         PNR_no, Train_code, From_station, To_station, 
         From_Km, To_Km, From_date, To_date
@@ -118,13 +138,61 @@ BEGIN
         v_from_km, v_to_km, p_from_date, p_from_date
     );
     
-    -- Check available seats
-    SELECT COUNT(*) INTO v_available_seats
+    -- Get seat prefix based on class
+    SET v_seat_prefix = 
+        CASE p_class_code
+            WHEN '1A' THEN 'A'
+            WHEN '2A' THEN 'B'
+            WHEN '3A' THEN 'C'
+            WHEN 'SL' THEN 'S'
+            WHEN 'CC' THEN 'D'
+            WHEN 'EC' THEN 'E'
+            WHEN '2S' THEN 'F'
+            WHEN 'FC' THEN 'G'
+            ELSE 'H'
+        END;
+    
+    -- Check if seats exist for this train/class/date
+    SELECT COUNT(*) INTO v_seat_exists
     FROM Seat_availability
     WHERE Train_code = p_train_code
     AND Class_code = p_class_code
-    AND Seat_Status = 'Available'
-    AND travel_date=p_from_date;
+    AND travel_date = p_from_date;
+    
+    -- If no seats exist, create them
+    IF v_seat_exists = 0 THEN
+        -- Create a temporary table to generate seat numbers
+        CREATE TEMPORARY TABLE IF NOT EXISTS temp_seat_numbers (seat_num INT);
+        
+        -- Insert seat numbers from 1 to v_seats_per_coach
+        SET @counter = 1;
+        WHILE @counter <= v_seats_per_coach DO
+            INSERT INTO temp_seat_numbers VALUES (@counter);
+            SET @counter = @counter + 1;
+        END WHILE;
+        
+        -- Insert new seats for the coach
+        INSERT INTO Seat_availability (Train_code, Class_code, Seat_No, Seat_Status, travel_date)
+        SELECT p_train_code, p_class_code, 
+               seat_num as Seat_No,
+               'Available' as Seat_Status,
+               p_from_date as travel_date
+        FROM temp_seat_numbers;
+        
+        -- Drop the temporary table
+        DROP TEMPORARY TABLE IF EXISTS temp_seat_numbers;
+        
+        -- Set available seats to the number of seats just created
+        SET v_available_seats = v_seats_per_coach;
+    ELSE
+        -- Check available seats
+        SELECT COUNT(*) INTO v_available_seats
+        FROM Seat_availability
+        WHERE Train_code = p_train_code
+        AND Class_code = p_class_code
+        AND Seat_Status = 'Available'
+        AND travel_date = p_from_date;
+    END IF;
     
     -- Check current RAC count
     SELECT COUNT(*) INTO v_rac_seats
@@ -150,7 +218,7 @@ BEGIN
         WHERE Train_code = p_train_code
         AND Class_code = p_class_code
         AND Seat_Status = 'Available'
-        AND travel_date=p_from_date
+        AND travel_date = p_from_date
         LIMIT 1;
         
         SET v_booking_status = 'Confirmed';
@@ -171,20 +239,6 @@ BEGIN
         SIGNAL SQLSTATE '45000' 
         SET MESSAGE_TEXT = 'No seats available. Waitlist is full.';
     END IF;
-    
-    -- Get seat prefix based on class
-    SET v_seat_prefix = 
-        CASE p_class_code
-            WHEN '1A' THEN 'A'
-            WHEN '2A' THEN 'B'
-            WHEN '3A' THEN 'C'
-            WHEN 'SL' THEN 'S'
-            WHEN 'CC' THEN 'D'
-            WHEN 'EC' THEN 'E'
-            WHEN '2S' THEN 'F'
-            WHEN 'FC' THEN 'G'
-            ELSE 'H'
-        END;
     
     -- Generate passenger ID
     SET v_passenger_id = CONCAT(v_pnr_no, '_P01');
@@ -218,7 +272,7 @@ BEGIN
         WHERE Train_code = p_train_code
         AND Class_code = p_class_code
         AND Seat_No = v_seat_no
-        AND travel_date=p_from_date;
+        AND travel_date = p_from_date;
     END IF;
     
     -- Process payment

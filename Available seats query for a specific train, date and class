@@ -1,27 +1,9 @@
-SELECT 
-    COUNT(s.Seat_No) AS available_seats
-FROM 
-    Seat_availability s
-WHERE 
-    s.Train_code = '12302'        -- Replace with actual train code
-    AND s.Class_code = 'FC'        -- Replace with actual class code
-    AND s.Seat_Status = 'Available'
-    AND NOT EXISTS (
-        SELECT 1 
-        FROM PAX_info p
-        JOIN Ticket_Reservation tr ON p.PNR_no = tr.PNR_no
-        WHERE tr.Train_code = s.Train_code
-        AND p.Class_code = s.Class_code
-        AND p.Seat_no = CONCAT(
-            CASE s.Class_code
-                WHEN '1A' THEN 'A'
-                WHEN '2A' THEN 'B'
-                WHEN '3A' THEN 'C'
-                WHEN 'SL' THEN 'S'
-                ELSE 'X'
-            END, 
-            s.Seat_No
-        )
-        AND tr.From_date = '2023-06-03'  -- Replace with your date
-        AND p.Booking_status IN ('Confirmed', 'RAC')
-    );
+SELECT
+    Train_code,Seat_No,Class_code,Seat_Status
+FROM Seat_availability
+WHERE
+    Train_code = '12321'
+    AND travel_date = '2023-10-01'
+    AND Class_code = '1A'
+    AND Seat_Status = 'Available'
+ORDER BY Seat_No;

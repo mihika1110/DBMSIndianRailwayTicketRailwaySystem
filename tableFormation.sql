@@ -22,6 +22,7 @@ CREATE TABLE Train (
     End_time TIME,
     Distance INT,
     Frequency VARCHAR(20)
+
 );
  -- Add Waitlist limit to Train table
 ALTER TABLE Train
@@ -69,15 +70,6 @@ CREATE TABLE Pay_info (
     Inst_amt DECIMAL(10,2),
     FOREIGN KEY (PNR_no) REFERENCES Ticket_Reservation(PNR_no) ON DELETE CASCADE,
     FOREIGN KEY (SRL_no) REFERENCES PAX_info(SRL_no) ON DELETE CASCADE
-);
- 
--- 7. Refund Rule 
-CREATE TABLE Refund_rule (
-    Rule_id INT PRIMARY KEY AUTO_INCREMENT,
-    PNR_no VARCHAR(15),
-    Refundable_amt DECIMAL(10,2),
-    Cancellation_time DATETIME,
-    FOREIGN KEY (PNR_no) REFERENCES Ticket_Reservation(PNR_no) ON DELETE CASCADE
 );
  
 -- 8. Login Credentials 

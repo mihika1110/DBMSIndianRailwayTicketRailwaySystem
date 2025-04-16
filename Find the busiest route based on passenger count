@@ -1,46 +1,9 @@
-SELECT 
-    route.departure_station,
-    route.arrival_station,
-    route.total_passengers,
-    route.total_trips,
-    route.avg_passengers_per_trip,
-    (
-        SELECT t.Train_name 
-        FROM Ticket_Reservation tr2
-        JOIN Train t ON tr2.Train_code = t.Train_code
-        WHERE tr2.From_station = route.departure_station
-        AND tr2.To_station = route.arrival_station
-        GROUP BY t.Train_name
-        ORDER BY COUNT(*) DESC
-        LIMIT 1
-    ) AS most_common_train,
-    (
-        SELECT p.Class_code
-        FROM PAX_info p
-        JOIN Ticket_Reservation tr2 ON p.PNR_no = tr2.PNR_no
-        WHERE tr2.From_station = route.departure_station
-        AND tr2.To_station = route.arrival_station
-        AND p.Booking_status IN ('Confirmed', 'RAC')
-        GROUP BY p.Class_code
-        ORDER BY COUNT(*) DESC
-        LIMIT 1
-    ) AS most_common_class
-FROM (
-    SELECT 
-        tr.From_station AS departure_station,
-        tr.To_station AS arrival_station,
-        COUNT(*) AS total_passengers,
-        COUNT(DISTINCT tr.PNR_no) AS total_trips,
-        ROUND(COUNT(*) / COUNT(DISTINCT tr.PNR_no), 1) AS avg_passengers_per_trip
-    FROM 
-        Ticket_Reservation tr
-    JOIN 
-        PAX_info p ON tr.PNR_no = p.PNR_no
-    WHERE 
-        p.Booking_status IN ('Confirmed', 'RAC')
-    GROUP BY 
-        tr.From_station, tr.To_station
-) AS route
-ORDER BY 
-    total_passengers DESC
-LIMIT 5;
+SELECT
+    tr.From_station,
+    tr.To_station,
+    COUNT(pi.SRL_no) AS Passenger_Count
+FROM Ticket_Reservation tr
+JOIN PAX_info pi ON tr.PNR_no = pi.PNR_no
+GROUP BY tr.From_station, tr.To_station
+ORDER BY Passenger_Count DESC
+LIMIT 1;

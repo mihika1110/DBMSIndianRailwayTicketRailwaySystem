@@ -1,48 +1,43 @@
-SELECT 
+SELECT
     tr.PNR_no,
     tr.Train_code,
     t.Train_name,
-    t.Start_time AS departure_time,
-    t.End_time AS arrival_time,
-    tr.From_station AS departure_station,
-    tr.To_station AS arrival_station,
-    tr.From_date AS departure_date,
-    tr.To_date AS arrival_date,
-    TIMEDIFF(t.End_time, t.Start_time) AS journey_duration,
-    p.PAX_Name AS passenger_name,
-    p.Class_code,
-    p.Seat_no,
-    p.Booking_status,
-    p.Waitlist_position,
-    CASE 
-        WHEN p.Booking_status = 'Confirmed' THEN 'Your seat is confirmed'
-        WHEN p.Booking_status = 'RAC' THEN 'You have RAC status (Sharing berth)'
-        WHEN p.Booking_status = 'Waitlist' THEN CONCAT('Waitlisted at position ', p.Waitlist_position)
-        WHEN p.Booking_status = 'Cancelled' THEN 'Cancelled - ' || 
-             CASE WHEN r.Refundable_amt > 0 
-                  THEN CONCAT('Refundable amount: ₹', r.Refundable_amt) 
-                  ELSE 'No refund applicable' 
-             END
-        ELSE 'Status unknown'
-    END AS status_description,
-    pi.Pay_mode AS payment_method,
-    pi.Amount AS amount_paid,
-    IFNULL(r.Refundable_amt, 0) AS refund_amount
-FROM 
-    Ticket_Reservation tr
-JOIN 
-    Train t ON tr.Train_code = t.Train_code
-JOIN 
-    PAX_info p ON tr.PNR_no = p.PNR_no
-LEFT JOIN 
-    Pay_info pi ON tr.PNR_no = pi.PNR_no AND p.SRL_no = pi.SRL_no
-LEFT JOIN 
-    Refund_rule r ON tr.PNR_no = r.PNR_no
-LEFT JOIN
-    Via_details v ON t.Train_code = v.Train_code
-WHERE 
-    tr.PNR_no = 'PNR12302005'  -- Replace with the PNR number you want to track
-GROUP BY
-    tr.PNR_no, tr.Train_code, t.Train_name, t.Start_time, t.End_time, t.Frequency,
-    tr.From_station, tr.To_station, tr.From_date, tr.To_date, p.PAX_Name, p.Class_code,
-    p.Seat_no, p.Booking_status, p.Waitlist_position, pi.Pay_mode, pi.Amount, r.Refundable_amt;
+    tr.From_station,
+    tr.To_station,
+    tr.From_date,
+    tr.To_date,
+    
+    pi.SRL_no,
+    pi.PAX_Name,
+    pi.PAX_age,
+    pi.PAX_sex,
+    pi.Category,
+    pi.Class_code,
+    pi.Seat_no,
+    pi.Fare,
+    pi.Booking_status,
+    pi.Waitlist_position,
+    
+    tf.Fare AS Fare_from_table,
+    
+    sa.Seat_Status,
+    
+    cr.Cancellation_time,
+    cr.Original_fare,
+    cr.Refund_amount
+    
+FROM Ticket_Reservation tr
+JOIN Train t ON tr.Train_code = t.Train_code
+LEFT JOIN PAX_info pi ON tr.PNR_no = pi.PNR_no
+LEFT JOIN Seat_availability sa ON sa.Train_code = tr.Train_code 
+                               AND sa.travel_date = tr.From_date 
+                               AND sa.Class_code = pi.Class_code 
+                               AND sa.Seat_No = pi.Seat_no
+LEFT JOIN Train_fare tf ON tf.Train_code = tr.Train_code 
+                        AND tf.From_Km = tr.From_Km 
+                        AND tf.To_Km = tr.To_Km 
+                        AND tf.Class_id = pi.Class_code
+                        AND tr.From_date BETWEEN tf.From_date AND tf.To_date
+LEFT JOIN Cancellation_Records cr ON cr.PNR_no = tr.PNR_no
+
+WHERE tr.PNR_no = 'YOUR_PNR_HERE';
